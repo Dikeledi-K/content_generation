@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
 import { OfficeParser } from 'officeparser';
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { pathToFileURL } from 'node:url';
 import { extname } from 'node:path';
 
@@ -79,9 +78,6 @@ async function processAttachments(attachments = []) {
       let text;
       if (plainTextTypes.has(fileType)) {
         text = buffer.toString('utf8').trim();
-      } else if (fileType === 'pdf') {
-        const parsedPdf = await pdfParse(buffer, { max: 50 });
-        text = parsedPdf.text?.trim();
       } else {
         const ast = await OfficeParser.parseOffice(buffer, { fileType });
         const extracted = await ast.to('text');
@@ -92,8 +88,8 @@ async function processAttachments(attachments = []) {
         const excerpt = text.slice(0, maxDocumentContextLength);
         documents.push(`--- Attached document: ${attachment.name} ---\n${excerpt}${truncated ? '\n[Document text truncated to fit the generation context.]' : ''}`);
       }
-    } catch {
-      throw attachmentError(`Could not read ${attachment.name}. Check that the document is valid and not password-protected.`);
+    } catch (error) {
+      throw attachmentError(`Could not read ${attachment.name}. Check that the document is valid and not password-protected. ${error.message}`);
     }
   }
 
@@ -223,7 +219,14 @@ app.post('/api/content/generate', async (req, res) => {
     suggestions: ['Add a clearer CTA', 'Use a stronger hook'],
     warnings: []
   };
-  history.unshift({ id: result.id, title: prompt, type: 'Content', status: completion ? 'Completed' : 'Demo', createdAt: new Date().toISOString() });
+  history.unshift({
+    id: result.id,
+    title: prompt,
+    type: 'Content',
+    status: completion ? 'Completed' : 'Demo',
+    createdAt: new Date().toISOString(),
+    content: result.content,
+  });
   return res.json(result);
 });
 
@@ -271,7 +274,14 @@ app.post('/api/code/generate', async (req, res) => {
     usage: 'Use in a frontend or script context.',
     improvements: ['Add tests', 'Handle errors explicitly']
   };
-  history.unshift({ id: result.id, title: prompt, type: 'Code', status: completion ? 'Completed' : 'Demo', createdAt: new Date().toISOString() });
+  history.unshift({
+    id: result.id,
+    title: prompt,
+    type: 'Code',
+    status: completion ? 'Completed' : 'Demo',
+    createdAt: new Date().toISOString(),
+    content: result.code,
+  });
   return res.json(result);
 });
 
@@ -334,6 +344,23 @@ app.post('/api/workflows/execute', (req, res) => {
 
 app.get('/api/history', (_req, res) => {
   res.json({ history });
+});
+
+app.delete('/api/history/:id', (req, res) => {
+  const index = history.findIndex((item) => item.id === req.params.id);
+  if (index === -1) {
+    return res.status(404).json({
+      error: { code: 'HISTORY_NOT_FOUND', message: 'History entry not found.' }
+    });
+  }
+
+  history.splice(index, 1);
+  return res.json({ deleted: true });
+});
+
+app.delete('/api/history', (_req, res) => {
+  history.length = 0;
+  return res.json({ cleared: true });
 });
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
