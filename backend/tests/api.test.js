@@ -1,28 +1,14 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import app from '../src/server.js';
 
-function createPdfBuffer(text) {
-  const escapedText = text.replaceAll('\\', '\\\\').replaceAll('(', '\\(').replaceAll(')', '\\)');
-  const stream = `BT /F1 18 Tf 72 720 Td (${escapedText}) Tj ET`;
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
-  ];
-  let pdf = '%PDF-1.4\n';
-  const offsets = [0];
-  for (const [index, object] of objects.entries()) {
-    offsets.push(Buffer.byteLength(pdf));
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  }
-  const xrefOffset = Buffer.byteLength(pdf);
-  pdf += `xref\n0 ${offsets.length}\n0000000000 65535 f \n`;
-  for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
-  pdf += `trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return Buffer.from(pdf);
+async function createPdfBuffer(text) {
+  const document = await PDFDocument.create();
+  const page = document.addPage();
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  page.drawText(text, { x: 50, y: 700, size: 18, font });
+  return Buffer.from(await document.save({ useObjectStreams: false }));
 }
 
 describe('CreateAI API', () => {
@@ -54,6 +40,28 @@ describe('CreateAI API', () => {
     expect(response.body.content).toContain('Create a landing page for a fintech app');
     expect(response.body.mode).toBe('demo');
     expect(response.body.explanation).toContain('OPENROUTER_API_KEY');
+
+    const history = await request(app).get('/api/history');
+    expect(history.body.history[0].content).toBe(response.body.content);
+  });
+
+  it('deletes one history entry and clears all remaining entries', async () => {
+    const first = await request(app)
+      .post('/api/content/generate')
+      .send({ prompt: 'First generated item' });
+    const second = await request(app)
+      .post('/api/code/generate')
+      .send({ prompt: 'Second generated item', language: 'JavaScript' });
+
+    const deleteResponse = await request(app).delete(`/api/history/${first.body.id}`);
+    expect(deleteResponse.status).toBe(200);
+    expect((await request(app).get('/api/history')).body.history.map((item) => item.id)).not.toContain(first.body.id);
+
+    const clearResponse = await request(app).delete('/api/history');
+    expect(clearResponse.status).toBe(200);
+    expect(clearResponse.body.cleared).toBe(true);
+    expect((await request(app).get('/api/history')).body.history).toEqual([]);
+    expect(second.body.id).toBeDefined();
   });
 
   it('uses OpenAI to generate prompt-specific content when configured', async () => {
@@ -237,7 +245,7 @@ describe('CreateAI API', () => {
       json: async () => ({ choices: [{ message: { content: 'A summary based on the PDF.' } }] }),
     });
     vi.stubGlobal('fetch', providerFetch);
-    const pdfBuffer = createPdfBuffer('VITAL Gold Women Content Guidelines');
+    const pdfBuffer = await createPdfBuffer('VITAL Gold Women Content Guidelines');
 
     const response = await request(app)
       .post('/api/content/generate')
