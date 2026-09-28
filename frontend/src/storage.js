@@ -14,6 +14,15 @@ export function getLocalHistory() {
   return readList(HISTORY_KEY);
 }
 
+export function removeLocalHistoryItem(id) {
+  const entries = readList(HISTORY_KEY).filter((entry) => entry.id !== id);
+  window.localStorage.setItem(HISTORY_KEY, JSON.stringify(entries));
+}
+
+export function clearLocalHistory() {
+  window.localStorage.removeItem(HISTORY_KEY);
+}
+
 export function recordGeneration(item) {
   const entries = readList(HISTORY_KEY).filter((entry) => entry.id !== item.id);
   window.localStorage.setItem(HISTORY_KEY, JSON.stringify([item, ...entries]));
