@@ -4,9 +4,17 @@ async function request(path, options) {
     ...options,
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  let data = {};
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    data = { error: { message: `Request failed (${response.status})` } };
+  }
   if (!response.ok) {
-    throw new Error(data.error?.message || `Request failed (${response.status})`);
+    const error = new Error(data.error?.message || `Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
   return data;
 }
@@ -24,4 +32,6 @@ export const api = {
   getWorkflows: () => request('/workflows'),
   executeWorkflow: (input) => post('/workflows/execute', input),
   getHistory: () => request('/history'),
+  deleteHistoryItem: (id) => request(`/history/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  clearHistory: () => request('/history', { method: 'DELETE' }),
 };
