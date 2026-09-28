@@ -1,0 +1,13 @@
+{
+  "name": "content-generation",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "build": "npm --prefix frontend run build && npm --prefix backend run build",
+    "test": "npm --prefix backend run test"
+  }
+}
