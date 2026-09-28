@@ -1,0 +1,137 @@
+:root {
+  color: #f8fafc;
+  background: #111827;
+  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  min-height: 100%;
+  background: #111827;
+}
+
+body {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
+
+button,input,select,textarea {
+  font: inherit;
+}
+
+.card {
+  background: #1f2937;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 175, 55, 0.38);
+  background: rgba(212, 175, 55, 0.12);
+  color: #f5b700;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.page-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+main .fui-Input,
+main .fui-Textarea,
+main .fui-Select__select {
+  background-color: #5c3428;
+  color: #fff1e8;
+  border-color: #a85c3e;
+}
+
+main .fui-Field__label {
+  color: #f8d6c4;
+}
+
+main .fui-Input input,
+main .fui-Textarea textarea {
+  color: #fff1e8;
+}
+
+main .fui-Input input::placeholder,
+main .fui-Textarea textarea::placeholder {
+  color: #e7b8a5;
+}
+
+main select option {
+  background-color: #5c3428;
+  color: #fff1e8;
+}
+
+button.action-primary,
+button.action-secondary {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+button.action-primary {
+  background-color: #a84f2f !important;
+  border: 1px solid #c87956 !important;
+  color: #fff1e8 !important;
+}
+
+button.action-primary:not(:disabled):hover {
+  background-color: #c2603d !important;
+  border-color: #e08a68 !important;
+}
+
+button.action-secondary {
+  background-color: #39251f !important;
+  border: 1px solid #a85c3e !important;
+  color: #f8d6c4 !important;
+}
+
+button.action-secondary:not(:disabled):hover {
+  background-color: #5c3428 !important;
+  border-color: #d78360 !important;
+  color: #fff1e8 !important;
+}
+
+button.action-primary:disabled,
+button.action-secondary:disabled {
+  background-color: #49332d !important;
+  border-color: #715144 !important;
+  color: #b89a8d !important;
+  cursor: not-allowed !important;
+}
+
+.panel {
+  background: #111827;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid #334155;
+  text-align: left;
+}
