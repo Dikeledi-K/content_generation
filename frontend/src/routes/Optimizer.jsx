@@ -1,8 +1,14 @@
 import { useState } from 'react';
-import { Button, Field, Input, Textarea, Title2, Text } from '@fluentui/react-components';
+import { useNavigate } from 'react-router-dom';
+import { Button, Field, Input, Spinner, Textarea } from '@fluentui/react-components';
+import { ArrowRight16Regular, Wand24Regular } from '@fluentui/react-icons';
 import { api } from '../api';
+import CopyButton from '../components/CopyButton';
+import EmptyState from '../components/EmptyState';
+import Notice from '../components/Notice';
 
 export default function Optimizer() {
+  const navigate = useNavigate();
   const [prompt, setPrompt] = useState('');
   const [goal, setGoal] = useState('');
   const [audience, setAudience] = useState('');
@@ -26,34 +32,66 @@ export default function Optimizer() {
   }
 
   return (
-    <div className="page-grid">
-      <div className="panel card">
-        <Title2 as="h2">Prompt optimizer</Title2>
-        <form onSubmit={handleOptimize} style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
-          <Field label="Draft prompt">
-            <Textarea value={prompt} onChange={(event, data) => setPrompt(data.value)} resize="vertical" required />
+    <div className="split">
+      <section className="card" aria-labelledby="draft-heading">
+        <h2 id="draft-heading" className="section-title" style={{ marginBottom: '1rem' }}>Your draft</h2>
+        <form onSubmit={handleOptimize} className="stack">
+          <Field label="Draft prompt" required>
+            <Textarea
+              value={prompt}
+              onChange={(event, data) => setPrompt(data.value)}
+              placeholder="e.g. Write an email about our new feature"
+              resize="vertical"
+              rows={5}
+            />
           </Field>
-          <Field label="Goal"><Input value={goal} onChange={(event, data) => setGoal(data.value)} /></Field>
-          <Field label="Audience"><Input value={audience} onChange={(event, data) => setAudience(data.value)} /></Field>
-          <Field label="Tone"><Input value={tone} onChange={(event, data) => setTone(data.value)} /></Field>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button className="action-primary" appearance="primary" type="submit" disabled={loading || !prompt.trim()}>{loading ? 'Improving...' : 'Improve prompt'}</Button>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+            <Field label="Goal (optional)"><Input value={goal} onChange={(event, data) => setGoal(data.value)} placeholder="e.g. sign-ups" /></Field>
+            <Field label="Audience (optional)"><Input value={audience} onChange={(event, data) => setAudience(data.value)} placeholder="e.g. new customers" /></Field>
+            <Field label="Tone (optional)"><Input value={tone} onChange={(event, data) => setTone(data.value)} placeholder="e.g. warm" /></Field>
+          </div>
+          <div className="row row-end">
+            <Button
+              appearance="primary"
+              type="submit"
+              icon={loading ? <Spinner size="tiny" /> : <Wand24Regular />}
+              disabled={loading || !prompt.trim()}
+            >{loading ? 'Improving...' : 'Improve prompt'}</Button>
           </div>
         </form>
-      </div>
-      <div className="panel card">
-        <Title2 as="h2">Suggestions</Title2>
-        {error && <Text role="alert" style={{ display: 'block', marginTop: '1rem', color: '#f87171' }}>{error}</Text>}
+      </section>
+
+      <section className="card" aria-labelledby="improved-heading" aria-live="polite">
+        <h2 id="improved-heading" className="section-title" style={{ marginBottom: '1rem' }}>Improved prompt</h2>
+        <Notice>{error}</Notice>
         {result ? (
-          <div style={{ marginTop: '1rem' }}>
-            <Text style={{ display: 'block', whiteSpace: 'pre-wrap' }}>{result.optimizedPrompt}</Text>
-            <Text style={{ display: 'block', marginTop: '0.75rem', color: '#94a3b8' }}>{result.rationale}</Text>
-            <ul style={{ color: '#cbd5e1', lineHeight: 1.8 }}>
-              {result.alternateVariants.map((variant) => <li key={variant}>{variant}</li>)}
-            </ul>
+          <div className="stack">
+            <pre className="output-box">{result.optimizedPrompt}</pre>
+            <p className="hint" style={{ margin: 0 }}>{result.rationale}</p>
+            <div className="row">
+              <CopyButton text={result.optimizedPrompt} />
+              <Button
+                appearance="primary"
+                icon={<ArrowRight16Regular />}
+                iconPosition="after"
+                onClick={() => navigate('/generator', { state: { prompt: result.optimizedPrompt } })}
+              >Use in Generator</Button>
+            </div>
+            {result.alternateVariants?.length > 0 && (
+              <div>
+                <h3 className="section-title" style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Other directions to try</h3>
+                <ul style={{ margin: 0, paddingLeft: '1.2rem' }} className="muted">
+                  {result.alternateVariants.map((variant) => <li key={variant}>{variant}</li>)}
+                </ul>
+              </div>
+            )}
           </div>
-        ) : !error && <Text style={{ display: 'block', marginTop: '1rem', color: '#94a3b8' }}>Your improved prompt will appear here.</Text>}
-      </div>
+        ) : !error && (
+          <EmptyState icon={Wand24Regular} title="No suggestions yet">
+            Enter a draft prompt and select Improve prompt.
+          </EmptyState>
+        )}
+      </section>
     </div>
   );
 }
