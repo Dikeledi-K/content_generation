@@ -14,6 +14,11 @@ export function getLocalHistory() {
   return readList(HISTORY_KEY);
 }
 
+export function mergeWithLocalHistory(serverHistory = []) {
+  const combined = new Map([...serverHistory, ...getLocalHistory()].map((item) => [item.id, item]));
+  return [...combined.values()].sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0));
+}
+
 export function removeLocalHistoryItem(id) {
   const entries = readList(HISTORY_KEY).filter((entry) => entry.id !== id);
   window.localStorage.setItem(HISTORY_KEY, JSON.stringify(entries));
@@ -30,6 +35,11 @@ export function recordGeneration(item) {
 
 export function getSavedItems() {
   return readList(SAVED_KEY);
+}
+
+export function removeSavedItem(id) {
+  const entries = readList(SAVED_KEY).filter((entry) => entry.id !== id);
+  window.localStorage.setItem(SAVED_KEY, JSON.stringify(entries));
 }
 
 export function saveGeneratedItem(item) {
