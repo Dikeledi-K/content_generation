@@ -4,10 +4,13 @@ import 'dotenv/config';
 import { OfficeParser } from 'officeparser';
 import { pathToFileURL } from 'node:url';
 import { extname } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
 const history = [];
+const maxHistoryEntries = 100;
+const providerTimeoutMs = 120000;
 const maxAttachmentCount = 5;
 const maxAttachmentSize = 10 * 1024 * 1024;
 const maxDocumentContextLength = 40000;
@@ -22,10 +25,15 @@ const plainTextTypes = new Set(['txt', 'json', 'xml', 'js', 'jsx', 'ts', 'tsx', 
 app.use(cors());
 app.use(express.json({ limit: '60mb' }));
 
-function attachmentError(message, status = 400) {
+function attachmentError(message, status = 400, code) {
   const error = new Error(message);
   error.status = status;
+  error.apiCode = code;
   return error;
+}
+
+function inputError(message) {
+  return attachmentError(message, 400, 'INVALID_INPUT');
 }
 
 async function processAttachments(attachments = []) {
@@ -137,9 +145,12 @@ async function generateWithOpenAI(systemPrompt, userPrompt, attachments = { imag
           { role: 'user', content: userContent },
         ],
       }),
+      signal: AbortSignal.timeout(providerTimeoutMs),
     });
-  } catch {
-    const error = new Error(`Could not reach ${provider}. Check your network connection and try again.`);
+  } catch (fetchError) {
+    const error = new Error(fetchError?.name === 'TimeoutError'
+      ? `${provider} did not respond within ${providerTimeoutMs / 1000} seconds. Please try again.`
+      : `Could not reach ${provider}. Check your network connection and try again.`);
     error.status = 502;
     throw error;
   }
@@ -173,45 +184,76 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-app.post('/api/content/generate', async (req, res) => {
-  const { prompt = '', tone, format, context, attachments: inputAttachments = [] } = req.body || {};
-
-  if (!prompt.trim() && inputAttachments.length === 0) {
-    return res.status(400).json({
-      error: { code: 'INVALID_INPUT', message: 'Enter a prompt or attach a file to generate.' }
-    });
+function readGenerationInput(body) {
+  const { prompt = '', attachments = [] } = body || {};
+  if (typeof prompt !== 'string') {
+    throw inputError('Prompt must be text.');
   }
+  if (!Array.isArray(attachments)) {
+    throw inputError('Attachments must be sent as a file list.');
+  }
+  if (!prompt.trim() && attachments.length === 0) {
+    throw inputError('Enter a prompt or attach a file to generate.');
+  }
+  return { prompt: prompt.trim(), attachments };
+}
 
-  const outputFormat = format || 'content';
-  let attachments;
-  let completion;
+async function runGeneration(systemPrompt, prompt, inputAttachments) {
   let generationStage = 'attachment parsing';
   try {
-    attachments = await processAttachments(inputAttachments);
+    const attachments = await processAttachments(inputAttachments);
     generationStage = 'AI provider request';
-    completion = await generateWithOpenAI(
-      `You are CreateAI, an expert content writer. Write a polished ${outputFormat} that directly fulfills the user's brief. Use the requested tone: ${tone || 'natural and appropriate to the brief'}. Treat the user's prompt as the source of truth; do not substitute a generic example. Return only the finished content.${outputFormat === 'X post' ? ' Keep the post within 280 characters.' : ''}`,
-      prompt.trim(),
-      attachments
-    );
+    const completion = await generateWithOpenAI(systemPrompt, prompt, attachments);
     if (!completion && inputAttachments.length) {
       throw attachmentError('Media attachments require a configured AI provider. Add an API key to backend/.env and restart the API.', 503);
     }
+    return completion;
   } catch (error) {
-    const errorStatus = error.status || 502;
-    return res.status(error.status || 502).json({
-      error: {
-        code: error.status < 500 ? 'INVALID_ATTACHMENT' : 'GENERATION_FAILED',
-        message: errorStatus >= 500
-          ? `${generationStage} failed: ${error.message}`
-          : error.message,
-      }
-    });
+    if (!error.status || error.status >= 500) {
+      error.message = `${generationStage} failed: ${error.message}`;
+    }
+    throw error;
+  }
+}
+
+function sendGenerationError(res, error) {
+  const status = error.status || 502;
+  return res.status(status).json({
+    error: {
+      code: error.apiCode || (status < 500 ? 'INVALID_ATTACHMENT' : 'GENERATION_FAILED'),
+      message: error.message,
+    }
+  });
+}
+
+function recordHistory(entry) {
+  history.unshift({ ...entry, createdAt: new Date().toISOString() });
+  history.length = Math.min(history.length, maxHistoryEntries);
+}
+
+function historyTitle(prompt, attachments) {
+  return prompt || attachments.map((attachment) => attachment?.name).filter(Boolean).join(', ') || 'Untitled generation';
+}
+
+app.post('/api/content/generate', async (req, res) => {
+  const { tone, format } = req.body || {};
+  let input;
+  let completion;
+  const outputFormat = format || 'content';
+  try {
+    input = readGenerationInput(req.body);
+    completion = await runGeneration(
+      `You are CreateAI, an expert content writer. Write a polished ${outputFormat} that directly fulfills the user's brief. Use the requested tone: ${tone || 'natural and appropriate to the brief'}. Treat the user's prompt as the source of truth; do not substitute a generic example. Return only the finished content.${outputFormat === 'X post' ? ' Keep the post within 280 characters.' : ''}`,
+      input.prompt,
+      input.attachments
+    );
+  } catch (error) {
+    return sendGenerationError(res, error);
   }
 
   const result = {
-    id: `content-${Date.now()}`,
-    content: completion?.text || `Generated ${outputFormat} for: ${prompt}`,
+    id: `content-${randomUUID()}`,
+    content: completion?.text || `Generated ${outputFormat} for: ${input.prompt}`,
     mode: completion ? 'ai' : 'demo',
     explanation: completion
       ? `AI-generated with ${completion.model} via ${completion.provider}.`
@@ -219,54 +261,34 @@ app.post('/api/content/generate', async (req, res) => {
     suggestions: ['Add a clearer CTA', 'Use a stronger hook'],
     warnings: []
   };
-  history.unshift({
+  recordHistory({
     id: result.id,
-    title: prompt,
+    title: historyTitle(input.prompt, input.attachments),
     type: 'Content',
     status: completion ? 'Completed' : 'Demo',
-    createdAt: new Date().toISOString(),
     content: result.content,
   });
   return res.json(result);
 });
 
 app.post('/api/code/generate', async (req, res) => {
-  const { prompt = '', language, attachments: inputAttachments = [] } = req.body || {};
-
-  if (!prompt.trim() && inputAttachments.length === 0) {
-    return res.status(400).json({
-      error: { code: 'INVALID_INPUT', message: 'Enter a prompt or attach a file to generate.' }
-    });
-  }
-
+  const { language } = req.body || {};
+  let input;
   let completion;
-  let generationStage = 'attachment parsing';
   try {
-    const attachments = await processAttachments(inputAttachments);
-    generationStage = 'AI provider request';
-    completion = await generateWithOpenAI(
+    input = readGenerationInput(req.body);
+    completion = await runGeneration(
       `You are CreateAI, an expert software engineer. Produce a correct, useful ${language || 'JavaScript'} solution that directly satisfies the user's request. Return only code, without markdown fences or generic placeholder examples.`,
-      prompt.trim(),
-      attachments
+      input.prompt,
+      input.attachments
     );
-    if (!completion && inputAttachments.length) {
-      throw attachmentError('Media attachments require a configured AI provider. Add an API key to backend/.env and restart the API.', 503);
-    }
   } catch (error) {
-    const errorStatus = error.status || 502;
-    return res.status(error.status || 502).json({
-      error: {
-        code: error.status < 500 ? 'INVALID_ATTACHMENT' : 'GENERATION_FAILED',
-        message: errorStatus >= 500
-          ? `${generationStage} failed: ${error.message}`
-          : error.message,
-      }
-    });
+    return sendGenerationError(res, error);
   }
 
   const result = {
-    id: `code-${Date.now()}`,
-    code: completion?.text || `// Demo placeholder for ${language || 'JavaScript'}: ${prompt}`,
+    id: `code-${randomUUID()}`,
+    code: completion?.text || `// Demo placeholder for ${language || 'JavaScript'}: ${input.prompt}`,
     mode: completion ? 'ai' : 'demo',
     explanation: completion
       ? `AI-generated with ${completion.model} via ${completion.provider}.`
@@ -274,12 +296,11 @@ app.post('/api/code/generate', async (req, res) => {
     usage: 'Use in a frontend or script context.',
     improvements: ['Add tests', 'Handle errors explicitly']
   };
-  history.unshift({
+  recordHistory({
     id: result.id,
-    title: prompt,
+    title: historyTitle(input.prompt, input.attachments),
     type: 'Code',
     status: completion ? 'Completed' : 'Demo',
-    createdAt: new Date().toISOString(),
     content: result.code,
   });
   return res.json(result);
@@ -288,7 +309,7 @@ app.post('/api/code/generate', async (req, res) => {
 app.post('/api/prompts/optimize', (req, res) => {
   const { prompt, goal, audience, tone } = req.body || {};
 
-  if (!prompt) {
+  if (typeof prompt !== 'string' || !prompt.trim()) {
     return res.status(400).json({
       error: { code: 'INVALID_PROMPT', message: 'Prompt is required.' }
     });
@@ -361,6 +382,21 @@ app.delete('/api/history/:id', (req, res) => {
 app.delete('/api/history', (_req, res) => {
   history.length = 0;
   return res.json({ cleared: true });
+});
+
+app.use((error, _req, res, _next) => {
+  const status = error.status || error.statusCode || 500;
+  const messages = {
+    'entity.parse.failed': 'Request body must be valid JSON.',
+    'entity.too.large': 'Request is too large. Attachments cannot exceed 20 MB in total.',
+  };
+  if (status >= 500) console.error(error);
+  res.status(status).json({
+    error: {
+      code: status >= 500 ? 'INTERNAL_ERROR' : 'INVALID_REQUEST',
+      message: messages[error.type] || (status >= 500 ? 'Unexpected server error.' : error.message),
+    }
+  });
 });
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
