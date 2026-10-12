@@ -1,7 +1,20 @@
-import { useState } from 'react';
-import { Button, Field, Input, Select, Text, Textarea, Title2, Title3 } from '@fluentui/react-components';
+import { useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Button, Field, Input, Select, Spinner, Tab, TabList, Textarea } from '@fluentui/react-components';
+import {
+  Attach20Regular,
+  Checkmark20Regular,
+  Code20Regular,
+  Dismiss20Regular,
+  DocumentText20Regular,
+  Save20Regular,
+  Sparkle24Regular,
+} from '@fluentui/react-icons';
 import { api } from '../api';
 import { recordGeneration, saveGeneratedItem } from '../storage';
+import CopyButton from '../components/CopyButton';
+import EmptyState from '../components/EmptyState';
+import Notice from '../components/Notice';
 
 const MAX_ATTACHMENT_COUNT = 5;
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
@@ -23,12 +36,20 @@ async function encodeAttachment(file) {
   });
 }
 
+function formatSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function Generator() {
-  const [prompt, setPrompt] = useState('');
+  const location = useLocation();
+  const fileInput = useRef(null);
+  const [prompt, setPrompt] = useState(location.state?.prompt || '');
   const [tone, setTone] = useState('');
   const [language, setLanguage] = useState('JavaScript');
   const [format, setFormat] = useState('Landing page');
-  const [mode, setMode] = useState('content');
+  const [mode, setMode] = useState(location.state?.mode || 'content');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -76,14 +97,17 @@ export default function Generator() {
       const response = mode === 'code'
         ? await api.generateCode({ prompt, language, attachments: encodedAttachments })
         : await api.generateContent({ prompt, tone, format, attachments: encodedAttachments });
-      setResult(response);
-      recordGeneration({
+      const entry = {
         id: response.id,
         title: prompt.trim() || attachments.map((file) => file.name).join(', '),
         type: mode === 'code' ? 'Code' : 'Content',
+        content: response.content || response.code,
+      };
+      setResult({ ...response, entry });
+      recordGeneration({
+        ...entry,
         status: response.mode === 'demo' ? 'Demo' : 'Completed',
         createdAt: new Date().toISOString(),
-        content: response.content || response.code,
       });
     } catch (requestError) {
       setError(requestError.message);
@@ -92,97 +116,154 @@ export default function Generator() {
     }
   }
 
+  const canGenerate = !loading && (prompt.trim() || attachments.length > 0);
+
   return (
-    <div className="page-grid">
-      <div className="panel card" style={{ gridColumn: 'span 2' }}>
-        <Title2 as="h2">Generate content or code</Title2>
-        <form onSubmit={handleGenerate} style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
-          <Field label="Generation type">
-            <Select value={mode} onChange={(event, data) => setMode(data.value)}>
-              <option value="content">Content</option>
-              <option value="code">Code</option>
-            </Select>
-          </Field>
-          <Field label="Prompt">
-            <Textarea value={prompt} onChange={(event, data) => setPrompt(data.value)} placeholder="Describe what to generate, or attach files" resize="vertical" />
-          </Field>
-          <Field label="Attachments">
-            <input
-              aria-label="Attach documents or pictures"
-              type="file"
-              multiple
-              onChange={handleAttachmentsSelected}
-              style={{ display: 'block', color: '#f8d6c4' }}
+    <div className="split">
+      <section className="card" aria-labelledby="brief-heading">
+        <h2 id="brief-heading" className="section-title" style={{ marginBottom: '1rem' }}>Your brief</h2>
+        <form onSubmit={handleGenerate} className="stack">
+          <TabList
+            selectedValue={mode}
+            onTabSelect={(event, data) => setMode(data.value)}
+            aria-label="Generation type"
+          >
+            <Tab value="content" icon={<DocumentText20Regular />}>Content</Tab>
+            <Tab value="code" icon={<Code20Regular />}>Code</Tab>
+          </TabList>
+
+          <Field label="What should we create?" hint="Be specific about the topic, audience and anything that must be included.">
+            <Textarea
+              value={prompt}
+              onChange={(event, data) => setPrompt(data.value)}
+              placeholder={mode === 'code' ? 'e.g. A function that validates South African ID numbers' : 'e.g. A launch announcement for our new budgeting app, aimed at students'}
+              resize="vertical"
+              rows={6}
             />
-            <Text size={200} style={{ color: '#cbd5e1' }}>Up to 5 files, 10 MB each and 20 MB total. Supports JPEG, PNG, WEBP, GIF, PDF, Office/OpenDocument files, RTF, EPUB, CSV, Markdown, HTML, text, and source files. Images require a vision-capable AI model.</Text>
-            {attachments.map((file, index) => (
-              <div key={`${file.name}-${file.lastModified}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Text>{file.name}</Text>
-                <Button
-                  className="action-secondary"
-                  appearance="secondary"
-                  type="button"
-                  aria-label={`Remove ${file.name}`}
-                  onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-                >Remove</Button>
-              </div>
-            ))}
-            {attachmentError && <Text role="alert" style={{ color: '#fca5a5' }}>{attachmentError}</Text>}
           </Field>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-            {mode === 'code' ? (
-              <Field label="Language">
-                <Select value={language} onChange={(event, data) => setLanguage(data.value)}>
-                  <option>JavaScript</option>
-                  <option>Python</option>
-                  <option>Java</option>
-                  <option>SQL</option>
+
+          {mode === 'code' ? (
+            <Field label="Language">
+              <Select value={language} onChange={(event, data) => setLanguage(data.value)}>
+                <option>JavaScript</option>
+                <option>Python</option>
+                <option>Java</option>
+                <option>SQL</option>
+              </Select>
+            </Field>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+              <Field label="Format">
+                <Select value={format} onChange={(event, data) => setFormat(data.value)}>
+                  <option>Landing page</option>
+                  <option>Blog</option>
+                  <option>Email</option>
+                  <option>Social media post</option>
+                  <option>X post</option>
                 </Select>
               </Field>
-            ) : (
-              <>
-                <Field label="Tone">
-                  <Input value={tone} onChange={(event, data) => setTone(data.value)} />
-                </Field>
-                <Field label="Format">
-                  <Select value={format} onChange={(event, data) => setFormat(data.value)}>
-                    <option>Landing page</option>
-                    <option>Blog</option>
-                    <option>Email</option>
-                    <option>Social media post</option>
-                    <option>X post</option>
-                  </Select>
-                </Field>
-              </>
-            )}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-            <Button className="action-primary" appearance="primary" type="submit" disabled={loading || (!prompt.trim() && attachments.length === 0)}>{loading ? 'Generating...' : 'Generate'}</Button>
+              <Field label="Tone (optional)">
+                <Input value={tone} onChange={(event, data) => setTone(data.value)} placeholder="e.g. friendly, formal" />
+              </Field>
+            </div>
+          )}
+
+          <Field
+            label="Attachments"
+            hint="Optional. Up to 5 files, 10 MB each (20 MB total): images, PDF, Office files, text and source code."
+            validationMessage={attachmentError || undefined}
+          >
+            <div className="stack" style={{ gap: '0.6rem' }}>
+              <input
+                ref={fileInput}
+                className="visually-hidden"
+                type="file"
+                multiple
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={handleAttachmentsSelected}
+              />
+              <div>
+                <Button
+                  type="button"
+                  appearance="secondary"
+                  icon={<Attach20Regular />}
+                  onClick={() => fileInput.current?.click()}
+                  disabled={attachments.length >= MAX_ATTACHMENT_COUNT}
+                >Add files</Button>
+              </div>
+              {attachments.length > 0 && (
+                <div className="row">
+                  {attachments.map((file, index) => (
+                    <span key={`${file.name}-${file.lastModified}-${index}`} className="file-chip">
+                      <span className="file-chip-name" title={file.name}>{file.name}</span>
+                      <span className="hint">{formatSize(file.size)}</span>
+                      <Button
+                        type="button"
+                        appearance="subtle"
+                        size="small"
+                        icon={<Dismiss20Regular />}
+                        aria-label={`Remove ${file.name}`}
+                        onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                      />
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Field>
+
+          <div className="row row-end">
+            <Button
+              appearance="primary"
+              size="large"
+              type="submit"
+              icon={loading ? <Spinner size="tiny" /> : <Sparkle24Regular />}
+              disabled={!canGenerate}
+            >{loading ? 'Generating...' : 'Generate'}</Button>
           </div>
         </form>
-      </div>
+      </section>
 
-      <div className="panel card">
-        <Title3 as="h3">Output preview</Title3>
-        {error && <Text role="alert" style={{ display: 'block', marginTop: '1rem', color: '#f87171' }}>{error}</Text>}
-        {result && (
-          <div style={{ marginTop: '1rem' }}>
-            <Text style={{ display: 'block', whiteSpace: 'pre-wrap' }}>{result.content || result.code}</Text>
-            <Text style={{ display: 'block', marginTop: '0.75rem', color: '#94a3b8' }}>{result.explanation}</Text>
-            <Button
-              className="action-secondary"
-              appearance="secondary"
-              style={{ marginTop: '1rem' }}
-              onClick={() => {
-                saveGeneratedItem({ id: result.id, title: prompt.trim() || attachments.map((file) => file.name).join(', '), type: mode === 'code' ? 'Code' : 'Content', content: result.content || result.code });
-                setSaved(true);
-              }}
-              disabled={saved}
-            >{saved ? 'Saved' : 'Save output'}</Button>
+      <section className="card" aria-labelledby="output-heading" aria-live="polite">
+        <div className="card-header">
+          <h2 id="output-heading" className="section-title">Output</h2>
+          {result && (
+            <span className={`badge ${result.mode === 'demo' ? 'badge-warning' : 'badge-success'}`}>
+              {result.mode === 'demo' ? 'Demo output' : 'AI generated'}
+            </span>
+          )}
+        </div>
+
+        {error && <Notice>{error}</Notice>}
+
+        {loading && <Spinner label="Writing your output..." style={{ padding: '2.5rem 0' }} />}
+
+        {result && !loading && (
+          <div className="stack">
+            <pre className={`output-box${result.code ? ' code' : ''}`}>{result.content || result.code}</pre>
+            <p className="hint" style={{ margin: 0 }}>{result.explanation}</p>
+            <div className="row">
+              <CopyButton text={result.content || result.code} />
+              <Button
+                appearance="secondary"
+                icon={saved ? <Checkmark20Regular /> : <Save20Regular />}
+                onClick={() => {
+                  saveGeneratedItem(result.entry);
+                  setSaved(true);
+                }}
+                disabled={saved}
+              >{saved ? 'Saved' : 'Save'}</Button>
+            </div>
           </div>
         )}
-        {!result && !error && <Text style={{ display: 'block', marginTop: '1rem', color: '#94a3b8' }}>Generated output will appear here.</Text>}
-      </div>
+
+        {!result && !loading && !error && (
+          <EmptyState icon={Sparkle24Regular} title="Nothing generated yet">
+            Fill in your brief and select Generate. The result will appear here.
+          </EmptyState>
+        )}
+      </section>
     </div>
   );
 }

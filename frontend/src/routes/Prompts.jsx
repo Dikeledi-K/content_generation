@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Input, Title2, Text } from '@fluentui/react-components';
+import { useNavigate } from 'react-router-dom';
+import { Button, Input, Spinner } from '@fluentui/react-components';
+import { ArrowRight16Regular, Library24Regular, Search20Regular } from '@fluentui/react-icons';
 import { api } from '../api';
+import EmptyState from '../components/EmptyState';
+import Notice from '../components/Notice';
 
 export default function Prompts() {
+  const navigate = useNavigate();
   const [templates, setTemplates] = useState([]);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
@@ -21,25 +26,54 @@ export default function Prompts() {
     `${template.name} ${template.category}`.toLowerCase().includes(search.toLowerCase()),
   );
 
+  function applyTemplate(template) {
+    navigate('/generator', {
+      state: {
+        prompt: `${template.name}: `,
+        mode: template.category === 'Engineering' ? 'code' : 'content',
+      },
+    });
+  }
+
   return (
-    <div className="page-grid">
-      <div className="panel card" style={{ gridColumn: 'span 2' }}>
-        <Title2 as="h2">Prompt Library</Title2>
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', marginBottom: '1rem' }}>
-          <Input placeholder="Search templates" value={search} onChange={(event, data) => setSearch(data.value)} style={{ flex: 1 }} />
+    <div className="stack">
+      <Input
+        contentBefore={<Search20Regular />}
+        placeholder="Search templates by name or category"
+        aria-label="Search templates"
+        value={search}
+        onChange={(event, data) => setSearch(data.value)}
+        size="large"
+        style={{ maxWidth: 480 }}
+      />
+
+      <Notice>{error}</Notice>
+
+      {loading ? (
+        <Spinner size="small" label="Loading templates..." />
+      ) : !error && filteredTemplates.length === 0 ? (
+        <div className="card">
+          <EmptyState icon={Library24Regular} title="No templates found">
+            {search ? `Nothing matches “${search}”. Try a different word.` : 'No templates are available yet.'}
+          </EmptyState>
         </div>
-        <div style={{ display: 'grid', gap: '0.9rem' }}>
-          {loading && <Text>Loading templates...</Text>}
-          {error && <Text role="alert" style={{ color: '#f87171' }}>{error}</Text>}
-          {!loading && !error && filteredTemplates.length === 0 && <Text>No templates found.</Text>}
+      ) : (
+        <div className="page-grid">
           {filteredTemplates.map((template) => (
-            <div key={template.id} className="panel">
-              <Text weight="semibold">{template.name}</Text>
-              <Text style={{ display: 'block', marginTop: '0.5rem', color: '#94a3b8' }}>{template.category}</Text>
-            </div>
+            <article key={template.id} className="card stack" style={{ alignContent: 'space-between' }}>
+              <div>
+                <span className="badge badge-accent">{template.category}</span>
+                <h2 className="section-title" style={{ marginTop: '0.6rem' }}>{template.name}</h2>
+              </div>
+              <div>
+                <Button appearance="secondary" icon={<ArrowRight16Regular />} iconPosition="after" onClick={() => applyTemplate(template)}>
+                  Use template
+                </Button>
+              </div>
+            </article>
           ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }

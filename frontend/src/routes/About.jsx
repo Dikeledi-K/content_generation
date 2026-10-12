@@ -1,17 +1,33 @@
-import { Title2, Text } from '@fluentui/react-components';
+const steps = [
+  ['Write a brief', 'Open the Generator, choose Content or Code, and describe what you need. Attach files for extra context.'],
+  ['Refine your prompt', 'Use the Prompt Optimizer or start from a Prompt Library template for clearer, more specific results.'],
+  ['Keep what works', 'Copy or save any output. Everything you generate is also listed in History.'],
+];
 
 export default function About() {
   return (
-    <div className="panel card">
-      <Title2 as="h2">About CreateAI</Title2>
-      <Text style={{ display: 'block', marginTop: '1rem', lineHeight: 1.8, color: '#cbd5e1' }}>
-        CreateAI helps teams generate polished content, code snippets, and prompts with a repeatable workflow. It is designed for fast iteration, structured prompt design, and easy review of outputs across projects.
-      </Text>
-      <ul style={{ color: '#cbd5e1', lineHeight: 1.8, marginTop: '1rem' }}>
-        <li>Build prompts with clarity and context.</li>
-        <li>Optimize phrasing for tone and audience.</li>
-        <li>Track generations and compare history.</li>
-      </ul>
+    <div className="split">
+      <section className="card stack" aria-labelledby="about-heading">
+        <h2 id="about-heading" className="section-title">About CreateAI</h2>
+        <p style={{ margin: 0, fontSize: '1.02rem', lineHeight: 1.7 }}>
+          CreateAI helps teams generate polished content, code snippets and prompts with a repeatable workflow.
+          It is designed for fast iteration, structured prompt design and easy review of outputs across projects.
+        </p>
+      </section>
+      <section className="card" aria-labelledby="how-heading">
+        <h2 id="how-heading" className="section-title" style={{ marginBottom: '1rem' }}>How it works</h2>
+        <ol className="list">
+          {steps.map(([title, text], index) => (
+            <li key={title} className="list-item" style={{ justifyContent: 'flex-start', alignItems: 'flex-start' }}>
+              <span className="brand-mark" style={{ width: 28, height: 28, fontSize: '0.85rem', fontWeight: 700, flexShrink: 0 }}>{index + 1}</span>
+              <div>
+                <span className="list-item-title">{title}</span>
+                <span className="muted">{text}</span>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
     </div>
   );
 }
