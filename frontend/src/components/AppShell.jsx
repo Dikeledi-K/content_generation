@@ -1,121 +1,142 @@
-import { NavLink } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Button } from '@fluentui/react-components';
 import {
-  makeStyles,
-  shorthands,
-  tokens,
-  Text,
-  Title3,
-  Button,
-  Divider,
-} from '@fluentui/react-components';
+  Add20Regular,
+  Bookmark24Regular,
+  Dismiss24Regular,
+  Flow24Regular,
+  History24Regular,
+  Home24Regular,
+  Info24Regular,
+  Library24Regular,
+  Navigation24Regular,
+  Sparkle24Regular,
+  Wand24Regular,
+} from '@fluentui/react-icons';
 
-const useStyles = makeStyles({
-  shell: {
-    minHeight: '100vh',
-    background: '#0f172a',
-    color: '#f8fafc',
-    fontFamily: 'Segoe UI Variable, Segoe UI, sans-serif',
+const navGroups = [
+  {
+    label: 'Create',
+    items: [
+      { label: 'Dashboard', path: '/dashboard', icon: Home24Regular, description: 'An overview of your recent work and available workflows.' },
+      { label: 'Generator', path: '/generator', icon: Sparkle24Regular, description: 'Describe what you need and generate content or code.' },
+    ],
   },
-  topbar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '1rem 1.5rem',
-    background: 'rgba(15, 23, 42, 0.95)',
-    borderBottom: '1px solid #334155',
-    position: 'sticky',
-    top: 0,
-    zIndex: 10,
+  {
+    label: 'Prompts',
+    items: [
+      { label: 'Prompt Library', path: '/prompts', icon: Library24Regular, description: 'Start from a ready-made template.' },
+      { label: 'Prompt Optimizer', path: '/optimizer', icon: Wand24Regular, description: 'Make a draft prompt clearer before you generate.' },
+    ],
   },
-  nav: {
-    display: 'flex',
-    gap: '0.85rem',
-    flexWrap: 'wrap',
+  {
+    label: 'Automate',
+    items: [
+      { label: 'Workflows', path: '/workflows', icon: Flow24Regular, description: 'Run multi-step generation workflows.' },
+    ],
   },
-  navLink: {
-    ...shorthands.borderRadius('999px'),
-    padding: '0.5rem 0.8rem',
-    color: '#cbd5e1',
-    textDecoration: 'none',
-    fontSize: '0.92rem',
-    fontWeight: 600,
-    background: 'transparent',
-    border: '1px solid transparent',
-    transition: 'all 0.2s ease',
-    ':hover': {
-      borderColor: '#334155',
-      background: 'rgba(148, 163, 184, 0.08)',
-    },
+  {
+    label: 'Library',
+    items: [
+      { label: 'History', path: '/history', icon: History24Regular, description: 'Every generation, newest first.' },
+      { label: 'Saved', path: '/saved', icon: Bookmark24Regular, description: 'Outputs you chose to keep.' },
+    ],
   },
-  activeLink: {
-    color: '#111827',
-    background: '#d4af37',
-    borderColor: '#d4af37',
-  },
-  content: {
-    padding: '1.5rem',
-  },
-  titleRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '1.25rem',
-  },
-  actions: {
-    display: 'flex',
-    gap: '0.65rem',
-  },
-});
-
-const navItems = [
-  ['Dashboard', '/dashboard'],
-  ['Generator', '/generator'],
-  ['Prompt Library', '/prompts'],
-  ['Prompt Optimizer', '/optimizer'],
-  ['Workflow Builder', '/workflows'],
-  ['History', '/history'],
-  ['Saved Content', '/saved'],
-  ['About', '/about'],
 ];
 
+const aboutItem = { label: 'About', path: '/about', icon: Info24Regular, description: 'What CreateAI is for and how to use it.' };
+const allItems = [...navGroups.flatMap((group) => group.items), aboutItem];
+
+function NavItem({ item, onNavigate }) {
+  const Icon = item.icon;
+  return (
+    <NavLink to={item.path} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} onClick={onNavigate}>
+      <Icon />
+      <span>{item.label}</span>
+    </NavLink>
+  );
+}
+
+function Brand() {
+  return (
+    <>
+      <span className="brand-mark"><Sparkle24Regular /></span>
+      <span className="brand-name">CreateAI</span>
+    </>
+  );
+}
+
 export default function AppShell({ children }) {
-  const styles = useStyles();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const current = allItems.find((item) => location.pathname.startsWith(item.path));
+
+  useEffect(() => {
+    document.title = current ? `${current.label} · CreateAI` : 'CreateAI';
+  }, [current]);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [menuOpen]);
+
+  const closeMenu = () => setMenuOpen(false);
 
   return (
-    <div className={styles.shell}>
-      <header className={styles.topbar}>
-        <div>
-          <Text weight="semibold" size={500} style={{ color: '#f8fafc' }}>
-            CreateAI
-          </Text>
-        </div>
-        <nav className={styles.nav}>
-          {navItems.map(([label, path]) => (
-            <NavLink
-              key={path}
-              to={path}
-              className={({ isActive }) =>
-                `${styles.navLink} ${isActive ? styles.activeLink : ''}`
-              }
-            >
-              {label}
-            </NavLink>
+    <div className="app">
+      <div className="mobile-bar">
+        <span className="brand"><Brand /></span>
+        <Button
+          appearance="subtle"
+          icon={menuOpen ? <Dismiss24Regular /> : <Navigation24Regular />}
+          aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        />
+      </div>
+
+      <div className={`scrim${menuOpen ? ' open' : ''}`} onClick={closeMenu} aria-hidden="true" />
+
+      <aside className={`sidebar${menuOpen ? ' open' : ''}`}>
+        <NavLink to="/dashboard" className="brand" onClick={closeMenu}><Brand /></NavLink>
+
+        <Button
+          className="btn-gold"
+          appearance="primary"
+          icon={<Add20Regular />}
+          onClick={() => { closeMenu(); navigate('/generator'); }}
+        >New generation</Button>
+
+        <div className="sidebar-divider" aria-hidden="true" />
+
+        <nav aria-label="Main" style={{ display: 'grid', gap: '1.1rem' }}>
+          {navGroups.map((group) => (
+            <div key={group.label} className="nav-group">
+              <span className="nav-group-label">{group.label}</span>
+              {group.items.map((item) => <NavItem key={item.path} item={item} onNavigate={closeMenu} />)}
+            </div>
           ))}
         </nav>
-        <div className={styles.actions}>
-          <Button className="action-secondary" appearance="secondary">Export</Button>
-          <Button className="action-primary" appearance="primary">New Run</Button>
+
+        <div className="sidebar-footer nav-group">
+          <NavItem item={aboutItem} onNavigate={closeMenu} />
         </div>
-      </header>
-      <main className={styles.content}>
-        <div className={styles.titleRow}>
-          <Title3 as="h1">Workspace</Title3>
-          <Text size={300} style={{ color: '#94a3b8' }}>
-            Content + code generation studio
-          </Text>
-        </div>
-        <Divider style={{ marginBottom: '1.25rem' }} />
-        {children}
+      </aside>
+
+      <main className="main">
+        {current && (
+          <header className="page-header">
+            <div>
+              <h1 className="page-title">{current.label}</h1>
+              <p className="page-description">{current.description}</p>
+            </div>
+          </header>
+        )}
+        <div className="content">{children}</div>
       </main>
     </div>
   );
