@@ -293,6 +293,50 @@ describe('CreateAI API', () => {
     expect(response.body.error.message).toContain('not a supported document');
   });
 
+  it('rejects malformed generation input without crashing', async () => {
+    for (const body of [{ prompt: null }, { prompt: 42 }, { prompt: 'Valid', attachments: null }, { prompt: '   ' }]) {
+      const response = await request(app).post('/api/content/generate').send(body);
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('INVALID_INPUT');
+    }
+
+    const health = await request(app).get('/api/health');
+    expect(health.status).toBe(200);
+  });
+
+  it('returns a JSON error for malformed JSON bodies', async () => {
+    const response = await request(app)
+      .post('/api/code/generate')
+      .set('Content-Type', 'application/json')
+      .send('{not json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe('Request body must be valid JSON.');
+  });
+
+  it('gives concurrent generations unique ids', async () => {
+    const responses = await Promise.all([1, 2, 3].map(() => request(app).post('/api/content/generate').send({ prompt: 'Same moment' })));
+    const ids = responses.map((response) => response.body.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('titles attachment-only history entries with the file names', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-api-key');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'Summary of the brief.' } }] }),
+    }));
+
+    const response = await request(app)
+      .post('/api/content/generate')
+      .send({ attachments: [{ name: 'brief.txt', type: 'text/plain', data: Buffer.from('Brief').toString('base64') }] });
+
+    expect(response.status).toBe(200);
+    const history = await request(app).get('/api/history');
+    expect(history.body.history.find((item) => item.id === response.body.id).title).toBe('brief.txt');
+  });
+
   it('optimizes a prompt', async () => {
     const response = await request(app)
       .post('/api/prompts/optimize')
