@@ -9,7 +9,7 @@ export default defineConfig({
     strictPort: false,
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:3001',
+      '/api': process.env.API_PROXY_TARGET || 'http://localhost:3001',
     },
   },
   preview: {
