@@ -10,6 +10,16 @@ function readList(key) {
   }
 }
 
+// Browser storage can be full or blocked; a failed write should never break the page that triggered it.
+function writeList(key, entries) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(entries));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function getLocalHistory() {
   return readList(HISTORY_KEY);
 }
@@ -20,17 +30,19 @@ export function mergeWithLocalHistory(serverHistory = []) {
 }
 
 export function removeLocalHistoryItem(id) {
-  const entries = readList(HISTORY_KEY).filter((entry) => entry.id !== id);
-  window.localStorage.setItem(HISTORY_KEY, JSON.stringify(entries));
+  writeList(HISTORY_KEY, readList(HISTORY_KEY).filter((entry) => entry.id !== id));
 }
 
 export function clearLocalHistory() {
-  window.localStorage.removeItem(HISTORY_KEY);
+  try {
+    window.localStorage.removeItem(HISTORY_KEY);
+  } catch {
+    // Nothing to clear when storage is unavailable.
+  }
 }
 
 export function recordGeneration(item) {
-  const entries = readList(HISTORY_KEY).filter((entry) => entry.id !== item.id);
-  window.localStorage.setItem(HISTORY_KEY, JSON.stringify([item, ...entries]));
+  return writeList(HISTORY_KEY, [item, ...readList(HISTORY_KEY).filter((entry) => entry.id !== item.id)]);
 }
 
 export function getSavedItems() {
@@ -38,11 +50,9 @@ export function getSavedItems() {
 }
 
 export function removeSavedItem(id) {
-  const entries = readList(SAVED_KEY).filter((entry) => entry.id !== id);
-  window.localStorage.setItem(SAVED_KEY, JSON.stringify(entries));
+  writeList(SAVED_KEY, readList(SAVED_KEY).filter((entry) => entry.id !== id));
 }
 
 export function saveGeneratedItem(item) {
-  const entries = readList(SAVED_KEY).filter((entry) => entry.id !== item.id);
-  window.localStorage.setItem(SAVED_KEY, JSON.stringify([item, ...entries]));
+  return writeList(SAVED_KEY, [item, ...readList(SAVED_KEY).filter((entry) => entry.id !== item.id)]);
 }
