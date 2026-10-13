@@ -1,15 +1,23 @@
+const CONNECTION_LOST_MESSAGE = 'Lost connection to the CreateAI API before it replied. Check that the API server is running, then try again.';
+
 async function request(path, options) {
-  const response = await fetch(`/api${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(`/api${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+  } catch {
+    throw new Error(CONNECTION_LOST_MESSAGE);
+  }
 
   const responseText = await response.text();
   let data = {};
   try {
     data = responseText ? JSON.parse(responseText) : {};
   } catch {
-    data = { error: { message: `Request failed (${response.status})` } };
+    // The API always replies with JSON, so a non-JSON 5xx comes from the dev proxy failing to reach it.
+    data = { error: { message: response.status >= 500 ? CONNECTION_LOST_MESSAGE : `Request failed (${response.status})` } };
   }
   if (!response.ok) {
     const error = new Error(data.error?.message || `Request failed (${response.status})`);
